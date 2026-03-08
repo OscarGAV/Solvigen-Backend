@@ -28,7 +28,7 @@ class JWTService:
         self.access_token_expire_minutes = 30  # 30 minutes
         self.refresh_token_expire_days = 7  # 7 days
 
-    def create_access_token(self, user_id: int, username: str, email: str) -> str:
+    def create_access_token(self, user_id: int, username: str, email: str, role: str) -> str:
         """
         Create JWT access token
         """
@@ -39,8 +39,9 @@ class JWTService:
             "username": username,
             "email": email,
             "type": "access",
-            "exp": expire,
-            "iat": datetime.now(timezone.utc)
+            "role": role,
+            "iat": datetime.now(timezone.utc),
+            "exp": expire
         }
 
         token = jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
@@ -55,21 +56,20 @@ class JWTService:
         payload = {
             "sub": str(user_id),
             "type": "refresh",
-            "exp": expire,
-            "iat": datetime.now(timezone.utc)
+            "iat": datetime.now(timezone.utc),
+            "exp": expire
         }
 
         token = jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
         return token
 
-    def verify_token(self, token: str) -> dict[str, Any]:
+    def decode_token(self, token: str) -> dict[str, Any]:
         """
         Verify and decode JWT token
         Raises InvalidTokenError if token is invalid or expired
         """
         try:
-            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
-            return payload
+            return jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
         except InvalidTokenError as e:
             raise ValueError(f"Invalid token: {str(e)}")
 
@@ -77,18 +77,12 @@ class JWTService:
         """
         Extract user_id from token
         """
-        payload = self.verify_token(token)
+        payload = self.decode_token(token)
         return int(payload["sub"])
 
-    def is_token_expired(self, token: str) -> bool:
-        """
-        Check if token is expired
-        """
-        try:
-            self.verify_token(token)
-            return False
-        except ValueError:
-            return True
+    def get_role_from_token(self, token: str) -> str:
+        payload = self.decode_token(token)
+        return payload.get("role", "end_user")
 
 
 # Singleton instance

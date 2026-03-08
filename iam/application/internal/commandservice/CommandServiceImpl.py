@@ -1,18 +1,25 @@
-from iam.domain.model.aggregates.User import User
+from iam.domain.model.aggregates.User import User, UserRole
 from iam.domain.model.commands.UserCommands import (
-    SignUpCommand,
     SignInCommand,
     ChangePasswordCommand,
     UpdateProfileCommand,
-    DeactivateUserCommand
+    DeactivateUserCommand,
+    AdminCreateUserCommand,
+    AdminChangeRoleCommand,
+    AdminGrantProfileEditCommand,
+    AdminRevokeProfileEditCommand,
+    AdminGrantPasswordChangeCommand,
+    AdminRevokePasswordChangeCommand,
+    AdminSuspendUserCommand,
+    AdminReactivateUserCommand,
+    AdminForcePasswordResetCommand,
+    AdminUpdateProfileCommand,
 )
 from iam.domain.repositories.UserRepository import UserRepository
 from iam.application.internal.tokenservice.JWTService import jwt_service
 
 
 class AuthenticationResponse:
-    """Response for authentication operations"""
-
     def __init__(self, user: User, access_token: str, refresh_token: str):
         self.user = user
         self.access_token = access_token
@@ -21,162 +28,183 @@ class AuthenticationResponse:
 
 class CommandServiceImpl:
     """
-    Command Service for IAM Context
-    Handles all write operations (sign up, sign in, password changes, etc.)
+    Command Service for IAM Context.
+    sign_up (public registration) has been removed.
+    Users are created exclusively by admins via admin_create_user().
+    The first admin is seeded directly in the database.
     """
 
     def __init__(self, repository: UserRepository):
         self._repository = repository
 
-    async def sign_up(self, command: SignUpCommand) -> AuthenticationResponse:
-        """
-        Register new user
-
-        Business Rules:
-        - Username must be unique
-        - Email must be unique
-        - Password must be at least 8 characters
-        """
-
-        # Validate username uniqueness
-        if await self._repository.exists_by_username(command.username):
-            raise ValueError(f"Username '{command.username}' is already taken")
-
-        # Validate email uniqueness
-        if await self._repository.exists_by_email(command.email):
-            raise ValueError(f"Email '{command.email}' is already registered")
-
-        # Validate email format
-        if '@' not in command.email:
-            raise ValueError("Invalid email format")
-
-        # Validate username format
-        if len(command.username) < 3 or len(command.username) > 50:
-            raise ValueError("Username must be between 3 and 50 characters")
-
-        # Create user aggregate
-        user = User(
-            username=command.username.lower().strip(),
-            email=command.email.lower().strip(),
-            hashed_password=User.hash_password(command.password),
-            full_name=command.full_name,
-            is_active=True
-        )
-
-        # Persist
-        saved_user = await self._repository.save(user)
-
-        # Generate JWT tokens
-        access_token = jwt_service.create_access_token(
-            user_id=saved_user.id,
-            username=saved_user.username,
-            email=saved_user.email
-        )
-        refresh_token = jwt_service.create_refresh_token(user_id=saved_user.id)
-
-        return AuthenticationResponse(saved_user, access_token, refresh_token)
+    # =========================================================================
+    # AUTH
+    # =========================================================================
 
     async def sign_in(self, command: SignInCommand) -> AuthenticationResponse:
-        """
-        Authenticate user
-
-        Business Rules:
-        - User must exist
-        - Password must be correct
-        - Account must be active
-        """
-
-        # Find user by username or email
         user = await self._repository.find_by_username_or_email(
             command.username_or_email.lower().strip()
         )
-
         if not user:
             raise ValueError("Invalid credentials")
-
-        # Verify password
         if not user.verify_password(command.password):
             raise ValueError("Invalid credentials")
-
-        # Check if user can authenticate
         if not user.can_authenticate():
-            raise ValueError("Account is deactivated")
+            raise ValueError("Account is deactivated or suspended")
 
-        # Generate JWT tokens
         access_token = jwt_service.create_access_token(
             user_id=user.id,
             username=user.username,
-            email=user.email
+            email=user.email,
+            role=user.role.value,
         )
         refresh_token = jwt_service.create_refresh_token(user_id=user.id)
-
         return AuthenticationResponse(user, access_token, refresh_token)
 
-    async def change_password(self, command: ChangePasswordCommand) -> User:
-        """
-        Change user password
-        """
-        user = await self._repository.find_by_id(command.user_id)
-
-        if not user:
-            raise ValueError(f"User not found: {command.user_id}")
-
-        # Use domain logic for password change
-        user.change_password(command.old_password, command.new_password)
-
-        return await self._repository.save(user)
-
-    async def update_profile(self, command: UpdateProfileCommand) -> User:
-        """
-        Update user profile
-        """
-        user = await self._repository.find_by_id(command.user_id)
-
-        if not user:
-            raise ValueError(f"User not found: {command.user_id}")
-
-        # Check email uniqueness if changing email
-        if command.email and command.email != user.email:
-            if await self._repository.exists_by_email(command.email):
-                raise ValueError(f"Email '{command.email}' is already registered")
-
-        # Use domain logic for profile update
-        user.update_profile(full_name=command.full_name, email=command.email)
-
-        return await self._repository.save(user)
-
-    async def deactivate_user(self, command: DeactivateUserCommand) -> User:
-        """
-        Deactivate user account
-        """
-        user = await self._repository.find_by_id(command.user_id)
-
-        if not user:
-            raise ValueError(f"User not found: {command.user_id}")
-
-        user.deactivate()
-
-        return await self._repository.save(user)
-
     async def refresh_access_token(self, refresh_token: str) -> str:
-        """
-        Generate new access token from refresh token
-        """
         try:
             user_id = jwt_service.get_user_id_from_token(refresh_token)
         except ValueError:
             raise ValueError("Invalid or expired refresh token")
 
         user = await self._repository.find_by_id(user_id)
-
         if not user or not user.can_authenticate():
             raise ValueError("User not found or account deactivated")
 
-        # Generate new access token
-        access_token = jwt_service.create_access_token(
+        return jwt_service.create_access_token(
             user_id=user.id,
             username=user.username,
-            email=user.email
+            email=user.email,
+            role=user.role.value,
         )
 
-        return access_token
+    # =========================================================================
+    # SELF-SERVICE (requires prior admin permission)
+    # =========================================================================
+
+    async def change_password(self, command: ChangePasswordCommand) -> User:
+        user = await self._get_or_raise(command.user_id)
+        user.change_password(command.old_password, command.new_password)
+        return await self._repository.save(user)
+
+    async def update_profile(self, command: UpdateProfileCommand) -> User:
+        user = await self._get_or_raise(command.user_id)
+
+        if command.email and command.email != user.email:
+            if await self._repository.exists_by_email(command.email):
+                raise ValueError(f"Email '{command.email}' is already registered")
+
+        user.update_profile(full_name=command.full_name, email=command.email)
+        return await self._repository.save(user)
+
+    async def deactivate_user(self, command: DeactivateUserCommand) -> User:
+        """Legacy self-deactivation."""
+        user = await self._get_or_raise(command.user_id)
+        user.deactivate()
+        return await self._repository.save(user)
+
+    # =========================================================================
+    # ADMIN — User creation
+    # =========================================================================
+
+    async def admin_create_user(self, command: AdminCreateUserCommand) -> User:
+        """
+        Admin creates a new user with a specific role.
+        No public registration — this is the only way to create users.
+        """
+        if await self._repository.exists_by_username(command.username):
+            raise ValueError(f"Username '{command.username}' is already taken")
+        if await self._repository.exists_by_email(command.email):
+            raise ValueError(f"Email '{command.email}' is already registered")
+        if '@' not in command.email:
+            raise ValueError("Invalid email format")
+        if command.role == UserRole.ADMIN:
+            raise ValueError("Admin users must be created directly in the database")
+
+        user = User(
+            username=command.username.lower().strip(),
+            email=command.email.lower().strip(),
+            hashed_password=User.hash_password(command.password),
+            full_name=command.full_name,
+            role=command.role,
+            is_active=True,
+        )
+        return await self._repository.save(user)
+
+    # =========================================================================
+    # ADMIN — Role management
+    # =========================================================================
+
+    async def admin_change_role(self, command: AdminChangeRoleCommand) -> User:
+        user = await self._get_or_raise(command.target_user_id)
+        user.assign_role(command.new_role)
+        return await self._repository.save(user)
+
+    # =========================================================================
+    # ADMIN — Permission grants
+    # =========================================================================
+
+    async def admin_grant_profile_edit(self, command: AdminGrantProfileEditCommand) -> User:
+        user = await self._get_or_raise(command.target_user_id)
+        user.grant_profile_edit()
+        return await self._repository.save(user)
+
+    async def admin_revoke_profile_edit(self, command: AdminRevokeProfileEditCommand) -> User:
+        user = await self._get_or_raise(command.target_user_id)
+        user.revoke_profile_edit()
+        return await self._repository.save(user)
+
+    async def admin_grant_password_change(self, command: AdminGrantPasswordChangeCommand) -> User:
+        user = await self._get_or_raise(command.target_user_id)
+        user.grant_password_change()
+        return await self._repository.save(user)
+
+    async def admin_revoke_password_change(self, command: AdminRevokePasswordChangeCommand) -> User:
+        user = await self._get_or_raise(command.target_user_id)
+        user.revoke_password_change()
+        return await self._repository.save(user)
+
+    # =========================================================================
+    # ADMIN — Account suspension lifecycle
+    # =========================================================================
+
+    async def admin_suspend_user(self, command: AdminSuspendUserCommand) -> User:
+        """Suspend user — starts 30-day grace period before permanent deletion."""
+        user = await self._get_or_raise(command.target_user_id)
+        if user.is_admin():
+            raise ValueError("Cannot suspend an admin account")
+        user.suspend()
+        return await self._repository.save(user)
+
+    async def admin_reactivate_user(self, command: AdminReactivateUserCommand) -> User:
+        """Cancel suspension within the 30-day grace window."""
+        user = await self._get_or_raise(command.target_user_id)
+        user.reactivate()
+        return await self._repository.save(user)
+
+    async def admin_force_password_reset(self, command: AdminForcePasswordResetCommand) -> User:
+        """Admin sets a new password directly — no old password required."""
+        user = await self._get_or_raise(command.target_user_id)
+        user.force_change_password(command.new_password)
+        return await self._repository.save(user)
+
+    async def admin_update_profile(self, command: AdminUpdateProfileCommand) -> User:
+        """Admin updates any user's profile directly."""
+        user = await self._get_or_raise(command.target_user_id)
+
+        if command.email and command.email != user.email:
+            if await self._repository.exists_by_email(command.email):
+                raise ValueError(f"Email '{command.email}' is already registered")
+
+        user.admin_update_profile(full_name=command.full_name, email=command.email)
+        return await self._repository.save(user)
+
+    # =========================================================================
+    # PRIVATE
+    # =========================================================================
+
+    async def _get_or_raise(self, user_id: int) -> User:
+        user = await self._repository.find_by_id(user_id)
+        if not user:
+            raise ValueError(f"User not found: {user_id}")
+        return user

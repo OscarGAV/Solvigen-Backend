@@ -1,65 +1,34 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel
+
+from iam.domain.model.aggregates.User import UserRole
 
 
 class UserResponse(BaseModel):
-    """DTO for user data (without password)"""
-    id: int = Field(..., description="User ID")
-    username: str = Field(..., description="Username")
-    email: str = Field(..., description="Email address")
-    full_name: str | None = Field(None, description="Full name")
-    is_active: bool = Field(..., description="Account status")
-    created_at: datetime = Field(..., description="Registration date")
-    updated_at: datetime = Field(..., description="Last update date")
+    id: int
+    username: str
+    email: str
+    full_name: str | None
+    is_active: bool
+    role: UserRole
+    can_edit_profile: bool
+    can_change_password: bool
+    suspended_at: datetime | None
+    days_until_deletion: int | None
+    created_at: datetime
+    updated_at: datetime
 
-    model_config = {
-        "from_attributes": True,
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "id": 1,
-                    "username": "johndoe",
-                    "email": "john@example.com",
-                    "full_name": "John Doe",
-                    "is_active": True,
-                    "created_at": "2025-01-05T10:00:00Z",
-                    "updated_at": "2025-01-05T10:00:00Z"
-                }
-            ]
-        }
-    }
+    model_config = {"from_attributes": True}
 
 
 class AuthenticationResponse(BaseModel):
-    """DTO for authentication response"""
     user: UserResponse
-    access_token: str = Field(..., description="JWT access token")
-    refresh_token: str = Field(..., description="JWT refresh token")
-    token_type: str = Field(default="Bearer", description="Token type")
-
-    model_config = {
-        "json_schema_extra": {
-            "examples": [
-                {
-                    "user": {
-                        "id": 1,
-                        "username": "johndoe",
-                        "email": "john@example.com",
-                        "full_name": "John Doe",
-                        "is_active": True,
-                        "created_at": "2025-01-05T10:00:00Z",
-                        "updated_at": "2025-01-05T10:00:00Z"
-                    },
-                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                    "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                    "token_type": "Bearer"
-                }
-            ]
-        }
-    }
+    access_token: str
+    refresh_token: str
+    token_type: str = "Bearer"
 
 
 class TokenResponse(BaseModel):
-    """DTO for token refresh response"""
-    access_token: str = Field(..., description="New JWT access token")
-    token_type: str = Field(default="Bearer", description="Token type")
+    access_token: str
+    token_type: str = "Bearer"

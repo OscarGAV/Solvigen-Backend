@@ -1,25 +1,34 @@
 from dataclasses import dataclass
+from iam.domain.model.aggregates.User import UserRole
 
 
 @dataclass(frozen=True)
 class GetUserByIdQuery:
-    """Query: Get user by ID"""
     user_id: int
 
 
 @dataclass(frozen=True)
 class GetUserByUsernameQuery:
-    """Query: Get user by username"""
     username: str
 
 
 @dataclass(frozen=True)
 class GetUserByEmailQuery:
-    """Query: Get user by email"""
     email: str
 
 
 @dataclass(frozen=True)
 class GetAllUsersQuery:
-    """Query: Get all users (admin only)"""
+    """Admin: list all users with optional filters"""
+    role: UserRole | None = None
+    is_active: bool | None = None
+    suspended_only: bool = False
+
+
+@dataclass(frozen=True)
+class GetSuspendedPastGraceQuery:
+    """
+    Admin: get users whose suspension has exceeded 30 days
+    and are ready for permanent deletion.
+    """
     pass

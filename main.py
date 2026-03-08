@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from shared.infrastructure.persistence.configuration.database_configuration import init_db, close_db
 from iam.interface.api.rest.controllers.AuthController import router as auth_router
+from iam.interface.api.rest.controllers.AdminController import router as admin_router
 from incident.interface.api.rest.controllers.IncidentController import router as incident_router
+from notification.interface.api.rest.controllers.NotificationController import router as notifications_router
 
 
 """
@@ -76,8 +78,10 @@ app.add_middleware(
 """
 Include routers from bounded contexts
 """
-app.include_router(auth_router)      # IAM Context:      /api/v1/auth/*
+app.include_router(auth_router) # IAM Context: /api/v1/auth/*
+app.include_router(admin_router) # IAM Context: /api/v1/admin/*
 app.include_router(incident_router)  # Incident Context: /api/v1/incidents/*
+app.include_router(notifications_router)
 
 
 """
