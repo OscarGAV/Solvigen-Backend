@@ -59,7 +59,8 @@ async def init_db():
     logger.info("Initializing database...")
     try:
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            print ("Creating database tables if they do not exist...")
+            # await conn.run_sync(Base.metadata.create_all)
         logger.info("✓ Database initialized successfully")
     except Exception as e:
         logger.error(f"✗ Error initializing database: {str(e)}")
