@@ -118,7 +118,14 @@ async def get_all_notifications(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Admin retrieves all permission request notifications."""
-    stmt = select(Notification).order_by(Notification.created_at.desc())
+    stmt = (
+        select(Notification)
+        .where(Notification.notification_type.notin_([
+            NotificationType.RESOLUTION_REQUEST,
+            NotificationType.RESOLUTION_RESPONSE,
+        ]))
+        .order_by(Notification.created_at.desc())
+    )
     if unread_only:
         stmt = stmt.where(Notification.is_read == False)  # noqa: E712
     result = await db.execute(stmt)

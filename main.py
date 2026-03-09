@@ -11,6 +11,7 @@ from iam.interface.api.rest.controllers.AuthController import router as auth_rou
 from iam.interface.api.rest.controllers.AdminController import router as admin_router
 from incident.interface.api.rest.controllers.IncidentController import router as incident_router
 from notification.interface.api.rest.controllers.NotificationController import router as notifications_router
+from incident.interface.api.rest.controllers.ResolutionController import router as resolution_router
 
 
 """
@@ -82,6 +83,7 @@ app.include_router(auth_router) # IAM Context: /api/v1/auth/*
 app.include_router(admin_router) # IAM Context: /api/v1/admin/*
 app.include_router(incident_router)  # Incident Context: /api/v1/incidents/*
 app.include_router(notifications_router)
+app.include_router(resolution_router)
 
 
 """

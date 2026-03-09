@@ -18,6 +18,8 @@ def utc_now() -> datetime:
 class NotificationType(str, Enum):
     PROFILE_EDIT_REQUEST  = "profile_edit_request"
     PASSWORD_CHANGE_REQUEST = "password_change_request"
+    RESOLUTION_REQUEST      = "resolution_request"   # ← NUEVO: TI Team → end_user
+    RESOLUTION_RESPONSE     = "resolution_response"  # ← NUEVO: end_user → TI Team
 
 
 class Notification(Base):

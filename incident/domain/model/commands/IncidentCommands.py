@@ -29,7 +29,8 @@ class EscalateIncidentCommand:
     """
     incident_id: int
     escalated_by_id: int
-    notes: str              # Manual notes from the escalating agent
+    notes: str
+    escalated_by_role: str
 
 
 @dataclass(frozen=True)

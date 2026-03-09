@@ -162,7 +162,7 @@ async def escalate_incident(
     """Escalate an incident. The AI will generate a structured escalation summary for the L2 team."""
     try:
         service = _build_command_service(db, client)
-        command = IncidentResourceAssembler.to_escalate_command(incident_id, current_user.id, request)
+        command = IncidentResourceAssembler.to_escalate_command(incident_id, current_user.id, current_user.role.value, request)
         incident = await service.escalate_incident(command)
         return IncidentResourceAssembler.to_incident_response(incident)
 

@@ -74,11 +74,13 @@ class IncidentResourceAssembler:
     def to_escalate_command(
         incident_id: int,
         escalated_by_id: int,
+        escalated_by_role: str,
         request: EscalateIncidentRequest,
     ) -> EscalateIncidentCommand:
         return EscalateIncidentCommand(
             incident_id=incident_id,
             escalated_by_id=escalated_by_id,
+            escalated_by_role=escalated_by_role,
             notes=request.notes,
         )
 
@@ -195,6 +197,7 @@ class IncidentResourceAssembler:
             sla_remaining_hours=incident.sla_remaining_hours(),
             escalation_notes=incident.escalation_notes,
             escalation_summary=incident.escalation_summary,
+            escalated_by_role=incident.escalated_by_role,
             created_at=incident.created_at,
             updated_at=incident.updated_at,
             resolved_at=incident.resolved_at,

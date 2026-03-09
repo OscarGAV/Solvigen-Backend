@@ -79,6 +79,7 @@ class Incident(Base):
     # Escalation
     escalation_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     escalation_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    escalated_by_role: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # =========================================================================
     # DOMAIN LOGIC — Lifecycle Transitions
@@ -94,16 +95,17 @@ class Incident(Base):
         self.status = IncidentStatus.IN_PROGRESS
         self.updated_at = utc_now()
 
-    def escalate(self, notes: str, summary: str) -> None:
+    def escalate(self, notes: str, summary: str, escalated_by_role: str | None = None) -> None:
         """Escalate incident to a higher support tier."""
         if self.status == IncidentStatus.RESOLVED:
             raise ValueError("Cannot escalate a resolved incident")
         if self.status == IncidentStatus.CLOSED:
             raise ValueError("Cannot escalate a closed incident")
 
-        self.status = IncidentStatus.ESCALATED
         self.escalation_notes = notes
         self.escalation_summary = summary
+        self.escalated_by_role = escalated_by_role
+        self.status = IncidentStatus.ESCALATED
         self.updated_at = utc_now()
 
     def put_on_pending(self) -> None:

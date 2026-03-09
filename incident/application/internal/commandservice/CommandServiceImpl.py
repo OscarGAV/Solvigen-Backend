@@ -122,7 +122,7 @@ class IncidentCommandServiceImpl:
         )
         escalation_summary = summary_raw.get("escalation_summary", command.notes)
 
-        incident.escalate(notes=command.notes, summary=escalation_summary)
+        incident.escalate(notes=command.notes, summary=escalation_summary, escalated_by_role=command.escalated_by_role)
         return await self._repository.save(incident)
 
     async def put_on_pending(self, command: PendingIncidentCommand) -> Incident:

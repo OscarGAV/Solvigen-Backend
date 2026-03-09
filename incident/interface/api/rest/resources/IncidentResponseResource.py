@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from incident.domain.model.valueobjects.IncidentValueObjects import (
     IncidentType,
@@ -64,6 +64,7 @@ class IncidentResponse(BaseModel):
     # Escalation
     escalation_notes: str | None
     escalation_summary: str | None
+    escalated_by_role: str | None
 
     created_at: datetime
     updated_at: datetime
