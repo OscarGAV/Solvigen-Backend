@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from enum import Enum
 
 import bcrypt
-from sqlalchemy import String, Enum as SAEnum
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Enum as SAEnum, Integer, ForeignKey, PrimaryKeyConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from shared.infrastructure.persistence.configuration.database_configuration import Base
 
@@ -21,6 +21,25 @@ class UserRole(str, Enum):
 
 
 SUSPENSION_GRACE_DAYS = 30
+
+PERMISSION_PROFILE_EDIT    = "profile_edit"
+PERMISSION_PASSWORD_CHANGE = "password_change"
+
+
+class UserPermission(Base):
+    """
+    Tabla normalizada de permisos por usuario.
+    PK compuesta (user_id, permission_type) — sin id serial innecesario.
+    Reemplaza can_edit_profile y can_change_password de la tabla users.
+    """
+    __tablename__ = "user_permissions"
+    __table_args__ = (
+        PrimaryKeyConstraint("user_id", "permission_type"),
+    )
+
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    permission_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    granted_at: Mapped[datetime] = mapped_column(default=utc_now)
 
 
 class User(Base):
@@ -42,9 +61,13 @@ class User(Base):
         SAEnum(UserRole), nullable=False, default=UserRole.END_USER
     )
 
-    # ── Permisos de edición (concedidos por admin) ────────────────────────────
-    can_edit_profile: Mapped[bool] = mapped_column(default=False)
-    can_change_password: Mapped[bool] = mapped_column(default=False)
+    # ── Permisos de edición (tabla normalizada user_permissions) ─────────────
+    permissions: Mapped[list["UserPermission"]] = relationship(
+        "UserPermission",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+        foreign_keys="UserPermission.user_id",
+    )
 
     # ── Suspensión con gracia de 30 días ─────────────────────────────────────
     suspended_at: Mapped[datetime | None] = mapped_column(nullable=True)
@@ -79,7 +102,7 @@ class User(Base):
         if not self.verify_password(old_password):
             raise ValueError("Current password is incorrect")
         self.hashed_password = self.hash_password(new_password)
-        self.can_change_password = False  # ← single-use: revoked after use
+        self._revoke_permission(PERMISSION_PASSWORD_CHANGE)
         self.updated_at = utc_now()
 
     def force_change_password(self, new_password: str) -> None:
@@ -99,7 +122,7 @@ class User(Base):
         if not self.can_edit_profile:
             raise ValueError("You do not have permission to edit your profile")
         self._apply_profile(full_name, email)
-        self.can_edit_profile = False  # ← single-use: revoked after use
+        self._revoke_permission(PERMISSION_PROFILE_EDIT)
 
     def admin_update_profile(self, full_name: str | None = None, email: str | None = None) -> None:
         """Admin updates any user's profile without permission check."""
@@ -119,20 +142,37 @@ class User(Base):
     # =========================================================================
 
     def grant_profile_edit(self) -> None:
-        self.can_edit_profile = True
+        self._grant_permission(PERMISSION_PROFILE_EDIT)
         self.updated_at = utc_now()
 
     def revoke_profile_edit(self) -> None:
-        self.can_edit_profile = False
+        self._revoke_permission(PERMISSION_PROFILE_EDIT)
         self.updated_at = utc_now()
 
     def grant_password_change(self) -> None:
-        self.can_change_password = True
+        self._grant_permission(PERMISSION_PASSWORD_CHANGE)
         self.updated_at = utc_now()
 
     def revoke_password_change(self) -> None:
-        self.can_change_password = False
+        self._revoke_permission(PERMISSION_PASSWORD_CHANGE)
         self.updated_at = utc_now()
+
+    # ── Permission helpers ────────────────────────────────────────────────────
+
+    @property
+    def can_edit_profile(self) -> bool:
+        return any(p.permission_type == PERMISSION_PROFILE_EDIT for p in self.permissions)
+
+    @property
+    def can_change_password(self) -> bool:
+        return any(p.permission_type == PERMISSION_PASSWORD_CHANGE for p in self.permissions)
+
+    def _grant_permission(self, permission_type: str) -> None:
+        if not any(p.permission_type == permission_type for p in self.permissions):
+            self.permissions.append(UserPermission(user_id=self.id, permission_type=permission_type))
+
+    def _revoke_permission(self, permission_type: str) -> None:
+        self.permissions = [p for p in self.permissions if p.permission_type != permission_type]
 
     # =========================================================================
     # DOMAIN LOGIC — Role
